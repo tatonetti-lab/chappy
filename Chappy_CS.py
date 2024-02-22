@@ -7,6 +7,7 @@ import os
 import re
 import configparser
 import io
+import base64
 
 
 # Initialize the ConfigParser
@@ -48,7 +49,38 @@ def llm(prompt,system,tag,model="gpt-35-turbo",temperature=0,max_new_tokens=512)
     return response.choices[0].message.content
 
 
-def conversation(messages,model,tag,temperature=0,max_new_tokens=512):    
+def call_vision_api(image_base64, model="vision", max_tokens=512):
+
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a helpful assistant whose job is to summarize images in detail."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Describe the following image:"
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    }
+                ]
+            }
+        ],
+        max_tokens=max_tokens
+    )
+
+    return response.choices[0].message.content
+
+def conversation(messages,model,tag,temperature=0,max_new_tokens=512, image=None):    
 
     response = client.chat.completions.create(
         model=model,
@@ -56,8 +88,8 @@ def conversation(messages,model,tag,temperature=0,max_new_tokens=512):
         user=tag,
         temperature=temperature,
         max_tokens=max_new_tokens)
-    
     return response.choices[0].message.content
+
 
 def format_conversation(messages):
     formatted_messages = []
@@ -102,11 +134,11 @@ def display_chat(formatted_messages):
                 padding: 10px 15px;
             }
             .message-text a { /* Targeting links within message-text */
-                color: #ff8dda; /* Light pink color for links */
+                color: #f934b9; /* Light pink color for links */
                 text-decoration: none; /* Optional: removes underline from links */
             }
             .message-text a:hover { /* Optional: Change color on hover */
-                color: #ffc9ee; /* A darker pink for hover effect */
+                color: #fb7dd2; /* A darker pink for hover effect */
             }
             .user-text {
                 background-color: #8913db;
@@ -138,7 +170,7 @@ def display_chat(formatted_messages):
         if re.search(markdown_pattern, first_line):
             message['content'] = "\n\n" + message['content']
 
-        if re.search(markdown_pattern, first_line):
+        if re.search(markdown_pattern, last_line):
             message['content'] =  message['content'] + "\n"
 
         st.markdown(f"<div class='message-box {message['alignment_class']}'><div class='message-label'>{label}</div><div class='message-text {message['text_class']}'>{message['content']}</div></div>", unsafe_allow_html=True)
@@ -170,11 +202,11 @@ def export_conversation(conversation):
     conversation_text = ""
     for message in conversation:
         if message['role'] == 'system':
-            prefix = "System: "
+            prefix = "*_* System: "
         elif message['role'] == 'user':
-            prefix = "You: "
+            prefix = "*_* You: "
         else:  # Assuming the only other role is 'assistant'
-            prefix = "Chappy: "
+            prefix = "*_* Chappy: "
         conversation_text += prefix + message['content'] + "\n\n"
     return conversation_text
 
@@ -190,6 +222,12 @@ def update_system_prompt():
                 st.session_state['conversation'].insert(0, {"role": "system", "content": new_system_prompt})
         else:
             st.session_state['conversation'] = [{"role": "system", "content": new_system_prompt}]
+
+def get_image_base64(image):
+    base64_image = base64.b64encode(image.read()).decode('utf-8')
+    return base64_image
+
+
 
 # Setting Page Title, Page Icon and Layout Size
 st.set_page_config(
@@ -648,6 +686,7 @@ Jacunski A, Dixon SJ, Tatonetti NP. Connectivity Homology Enables Inter-Species 
                 st.experimental_rerun()
 
             # Add 'Edit Conversation' button in sidebar if in chat mode
+            st.sidebar.divider()
             if st.sidebar.button("Edit Conversation", key="edit_conversation_button"):
                 st.session_state['edit_mode'] = True
 
@@ -674,7 +713,29 @@ Jacunski A, Dixon SJ, Tatonetti NP. Connectivity Homology Enables Inter-Species 
                                     file_name=filename,
                                     mime='text/plain')
             
-            uploaded_file = st.sidebar.file_uploader("Upload past conversation", type=['txt'], key="file_uploader")
+
+            st.sidebar.title("Upload an image:")
+            uploaded_image = st.sidebar.file_uploader("👀", type=['jpg', 'jpeg', 'png'])
+            if uploaded_image is not None:
+                st.session_state['uploaded_image'] = uploaded_image
+                if st.sidebar.button('Process Uploaded Image'):
+                    # Convert the uploaded image to base64
+                    base64_image = get_image_base64(uploaded_image)
+
+                    # Call the vision API with the base64 image
+                    Chappy_response = call_vision_api(base64_image, model="vision", max_tokens=512)
+
+                    # Update conversation history with Chappy's response
+                    st.session_state['conversation'].append({"role": "assistant", "content": Chappy_response})
+
+                    st.session_state['uploaded_image'] = None
+
+                    # Rerun the app to update the conversation display, but now it won't reprocess the image
+                    st.experimental_rerun()
+
+            st.sidebar.divider()
+            st.sidebar.title("Upload past conversation:")
+            uploaded_file = st.sidebar.file_uploader("🧠", type=['txt'], key="file_uploader")
 
             if uploaded_file is not None:
                 # Use a session state variable to hold the file temporarily
@@ -692,7 +753,7 @@ Jacunski A, Dixon SJ, Tatonetti NP. Connectivity Homology Enables Inter-Species 
                         
                         # Parse the uploaded conversation
                         uploaded_conversation = []
-                        for line in string_data.split("\n\n"):
+                        for line in string_data.split("*_* "):
                             if line.startswith("You: "):
                                 message_content = line.replace("You: ", "", 1)
                                 role = 'user'
@@ -716,7 +777,6 @@ Jacunski A, Dixon SJ, Tatonetti NP. Connectivity Homology Enables Inter-Species 
                         st.experimental_rerun()
                     else:
                         st.sidebar.error("No file uploaded.")
-
 
             
 if __name__ == "__main__":
