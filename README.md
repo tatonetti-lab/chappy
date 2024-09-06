@@ -1,3 +1,4 @@
+![Chappy Logo](chappyL.png)
 # Chappy: A Conversational Assistant
 
 Chappy is a versatile conversational assistant designed to facilitate various tasks including chat interactions, quick analysis script writing, graphic generation, and monitoring model statuses. Built with privacy and security in mind, Chappy is safe for handling PHI (Protected Health Information), making it suitable for use in sensitive environments.
